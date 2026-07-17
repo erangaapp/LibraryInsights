@@ -1,0 +1,723 @@
+{
+  "info": {
+    "name": "LibraryInsights",
+    "description": "Full scenario coverage for the LibraryInsights gateway (http://localhost:5000). Run folders 01-04 in order via the Collection Runner (requests chain ids through collection variables). Folder 05 is manual: stop Inventory.Service first to demonstrate the failure policies. Requires all three hosts running with freshly seeded databases.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:5000" },
+    { "key": "isbn", "value": "" },
+    { "key": "createdBookId", "value": "" },
+    { "key": "borrowerEmail", "value": "" },
+    { "key": "borrowerId", "value": "" },
+    { "key": "loanId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 Insights (seed-based reads)",
+      "item": [
+        {
+          "name": "Most borrowed books",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/books/most-borrowed?pageSize=5",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "books", "most-borrowed" ],
+              "query": [ { "key": "pageSize", "value": "5" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('paged envelope', () => { pm.expect(b).to.have.property('items'); pm.expect(b).to.have.property('totalCount'); });",
+                  "pm.test('ranked descending', () => { if (b.items.length > 1) pm.expect(b.items[0].borrowCount).to.be.at.least(b.items[1].borrowCount); });",
+                  "pm.test('titles enriched via gRPC', () => pm.expect(b.items[0].title).to.be.a('string').and.not.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Most borrowed (date window)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/books/most-borrowed?from=2026-03-01&to=2026-06-01&pageSize=5",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "books", "most-borrowed" ],
+              "query": [
+                { "key": "from", "value": "2026-03-01" },
+                { "key": "to", "value": "2026-06-01" },
+                { "key": "pageSize", "value": "5" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('windowed counts are smaller or equal', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Also borrowed for book 1 (planted cluster)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/books/1/also-borrowed?pageSize=10",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "books", "1", "also-borrowed" ],
+              "query": [ { "key": "pageSize", "value": "10" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('seed book excluded from results', () => pm.expect(b.items.some(i => i.bookId === 1)).to.be.false);",
+                  "pm.test('has shared borrower counts', () => pm.expect(b.items[0]).to.have.property('sharedBorrowerCount'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Top borrowers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers/top?pageSize=5",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers", "top" ],
+              "query": [ { "key": "pageSize", "value": "5" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('ranked descending', () => { if (b.items.length > 1) pm.expect(b.items[0].borrowCount).to.be.at.least(b.items[1].borrowCount); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reading pace - borrower 12 (same-day clamp)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers/12/reading-pace",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers", "12", "reading-pace" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('per-book pace list present', () => pm.expect(b.books).to.be.an('array'));",
+                  "pm.test('seeded same-day return clamps to 1 day', () => pm.expect(b.books.some(x => x.days === 1)).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reading pace - borrower 15 (no loans, empty not error)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers/15/reading-pace",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers", "15", "reading-pace" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK, not an error', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('empty history', () => pm.expect(b.books).to.have.lengthOf(0));",
+                  "pm.test('average is null', () => pm.expect(b.averagePagesPerDay).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reading pace - unknown borrower 404",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers/99999/reading-pace",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers", "99999", "reading-pace" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 ProblemDetails', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Inventory catalog (active books)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books?page=1&pageSize=5",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books" ],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "5" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('paged envelope', () => pm.expect(pm.response.json()).to.have.property('totalCount'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Validation & routing",
+      "item": [
+        {
+          "name": "Oversized pageSize -> 400",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers/top?pageSize=500",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers", "top" ],
+              "query": [ { "key": "pageSize", "value": "500" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('field-keyed validation problem', () => pm.expect(pm.response.text().toLowerCase()).to.include('pagesize'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "from > to -> 400",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/books/most-borrowed?from=2026-06-01&to=2026-01-01",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "books", "most-borrowed" ],
+              "query": [
+                { "key": "from", "value": "2026-06-01" },
+                { "key": "to", "value": "2026-01-01" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Non-numeric bookId -> 404 (route constraint)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/books/abc/also-borrowed",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "books", "abc", "also-borrowed" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 from {bookId:int} route constraint', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Inventory commands (chained)",
+      "item": [
+        {
+          "name": "Create book -> 201",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('isbn', '978' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Location header present', () => pm.expect(pm.response.headers.get('Location')).to.exist);",
+                  "pm.collectionVariables.set('createdBookId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Test Book\",\n  \"author\": \"Collection Runner\",\n  \"isbn\": \"{{isbn}}\",\n  \"pages\": 250,\n  \"totalCopies\": 2\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books" ]
+            }
+          }
+        },
+        {
+          "name": "Create duplicate ISBN -> 409",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Different Title\",\n  \"author\": \"Someone Else\",\n  \"isbn\": \"{{isbn}}\",\n  \"pages\": 100,\n  \"totalCopies\": 1\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Correct book title (PATCH) -> 200",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Test Book (Corrected)\"\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books/{{createdBookId}}",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books", "{{createdBookId}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('title corrected', () => pm.expect(pm.response.json().title).to.include('Corrected'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Correct with empty body -> 400",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books/{{createdBookId}}",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books", "{{createdBookId}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 - at least one field required', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Discontinue created book -> 204",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books/{{createdBookId}}/discontinue",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books", "{{createdBookId}}", "discontinue" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Discontinue again -> 409",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory/books/{{createdBookId}}/discontinue",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "inventory", "books", "{{createdBookId}}", "discontinue" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 - already discontinued', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Lending commands (chained)",
+      "item": [
+        {
+          "name": "Create borrower -> 201",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('borrowerEmail', 'pm' + Date.now() + '@test.local');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('borrowerId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Runner\",\n  \"email\": \"{{borrowerEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers" ]
+            }
+          }
+        },
+        {
+          "name": "Create duplicate email -> 409",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Someone\",\n  \"lastName\": \"Else\",\n  \"email\": \"{{borrowerEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/borrowers",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "borrowers" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrow book 3 -> 201",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": 3,\n  \"borrowerId\": {{borrowerId}}\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('open loan', () => pm.expect(b.returnedAt).to.be.null);",
+                  "pm.collectionVariables.set('loanId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Return loan -> 200",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans/{{loanId}}/return",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans", "{{loanId}}", "return" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('return timestamp set', () => pm.expect(pm.response.json().returnedAt).to.not.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Return again -> 409",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans/{{loanId}}/return",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans", "{{loanId}}", "return" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 - already returned', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrow unknown book 9999 -> 404",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": 9999,\n  \"borrowerId\": {{borrowerId}}\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 - book does not exist', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrow discontinued book 30 -> 409",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": 30,\n  \"borrowerId\": {{borrowerId}}\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 - seeded discontinued book', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrow with unknown borrower -> 404",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": 3,\n  \"borrowerId\": 999999\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 - borrower does not exist', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Failure demos (MANUAL - stop Inventory.Service first)",
+      "description": "Stop only Inventory.Service, then run these two requests to demonstrate the failure-policy asymmetry: reads degrade, writes fail closed. Restart Inventory afterwards and re-run 'Most borrowed books' to watch titles return.",
+      "item": [
+        {
+          "name": "Degraded read - counts survive, titles unknown",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/books/most-borrowed?pageSize=5",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "books", "most-borrowed" ],
+              "query": [ { "key": "pageSize", "value": "5" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK even with Inventory down', () => pm.response.to.have.status(200));",
+                  "pm.test('degrades to Unknown title', () => pm.expect(pm.response.text()).to.include('Unknown title'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fail-closed write - borrow returns 503",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": 3,\n  \"borrowerId\": 1\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/lending/loans",
+              "host": [ "{{gatewayUrl}}" ],
+              "path": [ "api", "lending", "loans" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('503 - writes fail closed (after retry backoff)', () => pm.response.to.have.status(503));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
