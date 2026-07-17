@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+import "Protos/common.proto";
+
+option csharp_namespace = "Library.Contracts.Inventory";
+
+package inventory;
+
+service InventoryGrpc {
+  rpc GetBooksByIds (GetBooksByIdsRequest) returns (GetBooksByIdsResponse);
+  rpc GetBookById (GetBookByIdRequest) returns (GetBookByIdResponse);
+}
+
+message GetBooksByIdsRequest {
+  repeated int32 book_ids = 1;
+}
+
+message GetBooksByIdsResponse {
+  repeated BookInfo books = 1;
+}
+
+message GetBookByIdRequest {
+  int32 book_id = 1;
+}
+
+message GetBookByIdResponse {
+  Book book = 1;
+}

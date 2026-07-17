@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Gateway.Api/">
+    <Project Path="src/Gateway.Api/Gateway.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Inventory.Service/">
+    <Project Path="src/Inventory.Service/Inventory.Service.csproj" />
+  </Folder>
+  <Folder Name="/src/Lending.Service/">
+    <Project Path="src/Lending.Service/Lending.Service.csproj" />
+  </Folder>
+  <Folder Name="/src/Library.Contracts/">
+    <Project Path="src/Library.Contracts/Library.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Inventory.Service.Tests/">
+    <Project Path="tests/Inventory.Service.Tests/Inventory.Service.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Lending.Service.Tests/">
+    <Project Path="tests/Lending.Service.Tests/Lending.Service.Tests.csproj" />
+  </Folder>
+</Solution>
